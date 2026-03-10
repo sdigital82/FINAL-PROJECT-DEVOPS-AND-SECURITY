@@ -6,6 +6,8 @@ backend/Dockerfile-Distro
 node_modules/
 npm-debug.log*
 
+monitoring/get_helm.sh
+
 # Docker
 *.log
 

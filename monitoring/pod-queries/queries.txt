@@ -1,0 +1,91 @@
+MEMORY PANEL
+===============
+
+kube_pod_container_resource_limits{pod="$pod", resource="memory"}
+
+kube_pod_container_resource_requests{pod="$pod", resource="memory"}
+
+sum(
+  container_memory_working_set_bytes{
+    namespace="$namespace",
+    pod="$pod",
+    container!="POD"
+  }
+)
+
+
+Aditional configurations:
+
+Mode: Table
+Placement: Right
+Values: Last*
+
+Scale: Logarithmic, base 2
+Units: bytes (IEC)
+
+Overwrite:
+field return by query
+Standard options >Display name
+Graph styles > Line style
+Standard options > Color scheme
+
+
+CPU PANEL
+==========
+Limits
+sum(
+  kube_pod_container_resource_limits{
+    namespace="$namespace", 
+    pod="$pod", 
+    resource="cpu",
+    container!="POD"
+  }
+)
+
+Requests:
+sum(
+  kube_pod_container_resource_requests{
+    namespace="$namespace", 
+    pod="$pod", 
+    resource="cpu",
+    container!="POD"
+  }
+)
+
+Usage:
+sum(
+  rate(container_cpu_usage_seconds_total{
+    namespace="$namespace",
+    pod="$pod",
+    container!="POD"
+  }[2m])
+)
+
+Scale: linear
+units: SI short
+
+
+REPLICA SET
+==========
+
+desired of replicas
+kube_deployment_spec_replicas{namespace="$namespace",deployment="$deployment"}
+
+available
+kube_deployment_status_replicas_available{namespace="$namespace",deployment="$deployment"}
+
+unavailable
+kube_deployment_status_replicas_unavailable{namespace="$namespace",deployment="$deployment"}
+
+
+
+RESTART COUNT
+==================
+
+sum(
+  kube_pod_container_status_restarts_total{
+    namespace="$namespace",
+    pod="$pod"
+  }
+)
+

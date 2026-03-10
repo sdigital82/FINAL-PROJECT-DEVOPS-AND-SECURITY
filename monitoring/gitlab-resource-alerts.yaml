@@ -1,0 +1,60 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: gitlab-resource-alerts
+  namespace: default
+  labels:
+    release: monitoring
+spec:
+  groups:
+  - name: gitlab.rules
+    rules:
+    # CPU Pressure Alert
+    - alert: GitLabHighCPU
+      expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle", instance="192.168.109.146:9100"}[5m])) * 100) > 50
+      for: 2m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High CPU usage on GitLab Host"
+        description: "CPU usage on 192.168.109.146 is at {{ $value | printf \"%.2f\" }}%."
+
+    #RAM Pressure Alert
+    - alert: GitLabHighRAM
+      expr: 100 * (1 - (node_memory_MemAvailable_bytes{instance="192.168.109.146:9100"} / node_memory_MemTotal_bytes{instance="192.168.109.146:9100"})) > 75
+      for: 2m
+      labels:
+        severity: critical
+      annotations:
+        summary: "High RAM usage on GitLab Host"
+        description: "Memory usage is critically high: {{ $value | printf \"%.2f\" }}% used."
+
+    # Disk Pressure Alert
+    - alert: GitLabDiskPressure
+      expr: (1 - (node_filesystem_avail_bytes{instance="192.168.109.146:9100", fstype!~"ramfs|tmpfs|overlay"} / node_filesystem_size_bytes{instance="192.168.109.146:9100", fstype!~"ramfs|tmpfs|overlay"})) * 100 > 80
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Low Disk Space on GitLab Host"
+        description: "Disk usage on {{ $labels.device }} is above 80%."
+
+    # Network TX alert
+    - alert: GitLabNetworkTrafficSpike
+      expr: rate(node_network_transmit_bytes_total{instance="192.168.109.146:9100", device="ens33"}[5m]) / 1048576 > 100
+      for: 2m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Network Traffic Spike Detected"
+        description: "Outbound traffic on ens33 exceeded 100MB/s (Current: {{ $value | printf \"%.2f\" }}MB/s)."
+
+    #Network RX alert
+    - alert: GitLabInboundTrafficSpike
+      expr: rate(node_network_receive_bytes_total{instance="192.168.109.146:9100", device="ens33"}[2m]) / 1048576 > 150
+      for: 1m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Potential DoS Attack Detected"
+        description: "Inbound traffic on ens33 is unusually high: {{ $value | printf \"%.2f\" }}MB/s. This may indicate a flood attack."

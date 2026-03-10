@@ -1,0 +1,44 @@
+#Prometheus Configuration (GitLab Monitoring and NodePort)
+prometheus:
+  prometheusSpec:
+    additionalScrapeConfigs:
+      - job_name: 'gitlab-host-node'
+        static_configs:
+          - targets: ['192.168.109.146:9100']
+      - job_name: 'gitlab-host-docker'
+        static_configs:
+          - targets: ['192.168.109.146:9323']
+  service:
+    type: NodePort
+    nodePort: 30081
+
+#Grafana Configuration (Dashboards and NodePort)
+grafana:
+  defaultDashboardsEnabled: true
+  service:
+    type: NodePort
+    nodePort: 30082
+
+# Alertmanager Configuration (Full SMTP and Routing)
+alertmanager:
+  config:
+    global:
+      resolve_timeout: 5m
+      smtp_smarthost: 'smtp.gmail.com:587'
+      smtp_from: 'jacobdalton6292@gmail.com'
+      smtp_auth_username: 'jacobdalton6292@gmail.com'
+      smtp_auth_password: 'bcyxtybrvjeltvyx'
+      smtp_require_tls: true
+
+    route:
+      group_by: ['alertname', 'instance', 'severity']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      receiver: 'email-notifications'
+
+    receivers:
+    - name: 'email-notifications'
+      email_configs:
+      - to: 'mfj3813@op.pl'
+        send_resolved: true
