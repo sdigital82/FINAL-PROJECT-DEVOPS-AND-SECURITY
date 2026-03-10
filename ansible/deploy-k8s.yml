@@ -1,0 +1,57 @@
+---
+- name: Dedicated K8s Deployment
+  hosts: DeploymentServer
+
+  tasks:
+    - name: Create K8s directory structure
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+      loop:
+        - "{{ APP_DIR }}"
+        - "{{ APP_DIR }}/mysql-init"
+
+    - name: Copy .env and MySQL Init files
+      ansible.builtin.copy:
+        src: "../{{ item.src }}"
+        dest: "{{ APP_DIR }}/{{ item.dest }}"
+      loop:
+        - { src: ".env", dest: ".env" }
+        - { src: "mysql-init/", dest: "mysql-init/" }
+
+    - name: Copy and Template Manifests
+      ansible.builtin.template:
+        src: "../k8s-manifests/{{ item }}"
+        dest: "{{ APP_DIR }}/{{ item }}"
+      loop:
+        - mysql.yml
+        - pvc.yml
+        - backend.yml
+        - frontend.yml
+
+    - name: Create MySQL Init ConfigMap
+      ansible.builtin.shell: |
+        kubectl delete configmap mysql-init-config --ignore-not-found
+        kubectl create configmap mysql-init-config --from-file="{{ APP_DIR }}/mysql-init/"
+
+    - name: Create App Secrets
+      ansible.builtin.shell: |
+        kubectl delete secret app-secrets --ignore-not-found
+        kubectl create secret generic app-secrets --from-env-file="{{ APP_DIR }}/.env"
+
+    - name: Create Docker Registry Secret
+      ansible.builtin.shell: |
+        kubectl delete secret dockerhub-secret --ignore-not-found
+        kubectl create secret docker-registry dockerhub-secret \
+          --docker-username="{{ DOCKER_USERNAME }}" \
+          --docker-password="{{ DOCKER_PASSWORD }}" \
+          --docker-server=https://index.docker.io/v1/
+      no_log: true
+
+    - name: Apply Manifests
+      ansible.builtin.shell: "kubectl apply -f {{ APP_DIR }}/{{ item }}"
+      loop:
+        - mysql.yml
+        - pvc.yml
+        - backend.yml
+        - frontend.yml

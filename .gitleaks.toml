@@ -1,0 +1,13 @@
+[allowlist]
+    description = "Global allowlist for Ansible/Jinja2 variables"
+    regexes = ['''(?i)\{\{.*\}\}''']
+
+[[rules]]
+    id = "generic-password"
+    description = "Detect hardcoded passwords"
+    regex = '''(?i)(password|passwd|pwd)\s*[:=]\s*['"]([^'"]+)['"]'''
+    keywords = ["password", "passwd", "pwd"]
+    
+    # This specific rule-level allowlist is a backup for the global one
+    [rules.allowlist]
+        regexes = ['''(?i)\{\{.*\}\}''']

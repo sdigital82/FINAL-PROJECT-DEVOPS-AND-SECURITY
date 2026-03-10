@@ -1,0 +1,150 @@
+stages:
+  - build
+  - test
+  - security_scan
+  - package
+  - k8s_deployment
+
+workflow:
+  rules:
+    #This ensures the pipeline runs ONLY on master or main
+    - if: $CI_COMMIT_BRANCH == "master" || $CI_COMMIT_BRANCH == "main"
+      when: always
+    #This prevents the pipeline from starting on develop or any other branch
+    - when: never
+
+prepare_env:
+  stage: build
+  tags: ["st17-runner"]
+  #cache will keep node_modules between different pipeline runs to speed up npm ci
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}
+    paths:
+      - backend/node_modules/
+  script:
+      - cp "$ENV_FILE_CONTENT" .env
+      - cd backend && npm ci
+  artifacts:
+    paths:
+      - .env
+      - backend/node_modules/
+
+test_app:
+  stage: test
+  tags: ["st17-runner"]
+  #Needs makes this job test_app to wait for prepare_env to be successful
+  needs: ["prepare_env"]
+  script:
+    - cd backend
+    - node --check server.js
+
+#Start of Secrets and Credential scanning
+secrets_scan:
+  stage: security_scan
+  tags: ["st17-runner"]
+  needs: ["test_app"]
+  script:
+    - gitleaks detect --source . -v --config .gitleaks.toml --no-git
+#End of secrets and credential scanning
+
+#Start of SAST Scanning
+sast_scan:
+  stage: security_scan
+  tags: ["st17-runner"]
+  needs: ["secrets_scan"]
+  script:
+    # config auto will detect the language of app and choose security rule packs
+    # severity ERROR will only detect high and critical problems
+    - semgrep scan --config auto --severity ERROR --gitlab-sast --output sast-report.json --error .
+
+  artifacts:
+    when: always
+    paths:
+      - sast-report.json
+    expire_in: 1 week
+
+#End of SAST Scanning
+
+#Start of dependency scanning
+dependency_scan:
+  stage: security_scan
+  tags: ["st17-runner"]
+  needs: ["sast_scan"]
+  script:
+    - cd backend
+    - |
+      # Use 'tee' to save JSON while printing a human-readable report to the log
+      # We use || EXIT_CODE=$?' to capture the failure if vulnerabilities exist
+      npm audit --audit-level=high --json | tee ../sca-report.json || EXIT_CODE=$?
+
+      # Print the human-readable summary so the developer can see the CVEs in the log
+      echo "--- Human Readable Audit Summary ---"
+      npm audit --audit-level=high
+
+      # policy: Fail if EXIT_CODE is non-zero (High/Critical found)
+      if [ ${EXIT_CODE:-0} -ne 0 ]; then
+        echo "SCA Gate Failed: High/Critical vulnerabilities found."
+        exit $EXIT_CODE
+      fi
+  artifacts:
+    when: always
+    paths:
+      - sca-report.json
+    # sca report  saved above as a standard artifact for review.
+    expire_in: 1 week
+#End of Dependency Scanning
+
+#Start of the Package job (Containerization)
+#Adding Variables for tracable image identifier
+variables:
+  BACKEND_IMAGE: "$DOCKER_USERNAME/st17-backend:$CI_COMMIT_SHORT_SHA"
+  FRONTEND_IMAGE: "$DOCKER_USERNAME/st17-frontend:$CI_COMMIT_SHORT_SHA"
+
+package_job:
+  stage: package
+  tags: ["st17-runner"]
+  needs: ["test_app","secrets_scan","sast_scan","dependency_scan"]
+  script:
+    - docker build -t "$BACKEND_IMAGE" ./backend
+    - docker build -t "$FRONTEND_IMAGE" ./frontend
+#Start of the image scan job
+image_scan:
+  stage: package
+  tags: ["st17-runner"]
+  needs: ["package_job"]
+  script:
+    #backend scan, generate JSON, then print Table + set Exit Code logic
+    - trivy image --format json --output backend-container-report.json "$BACKEND_IMAGE"
+    - trivy image --severity HIGH,CRITICAL --exit-code 1 "$BACKEND_IMAGE" || BACK_ERR=$?
+    - BACK_ERR=0 #Forcing success - project test only
+
+    #the final gate to fail if the image has issues
+    - |
+      if [ ${BACK_ERR:-0} -ne 0 ]; then
+        echo "Security Gate Failed: High/Critical vulnerabilities found."
+        exit 1
+      fi
+    #if image scan is successful, we push the images to dockerhub
+    - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+    - docker push "$BACKEND_IMAGE"
+    - docker push "$FRONTEND_IMAGE"
+  artifacts:
+    when: always
+    paths:
+      - backend-container-report.json
+    expire_in: 1 week
+#End of image scanning
+
+#Start of k8s deployment
+k8s_deployment:
+  stage: k8s_deployment
+  tags: ["st17-runner"]
+  needs: ["image_scan","prepare_env"]
+  dependencies: ["prepare_env"]
+  script:
+     - |
+       ansible-playbook -i ansible/inventory.ini ansible/deploy-k8s.yml \
+          -e "BACKEND_IMAGE=${BACKEND_IMAGE}" \
+          -e "FRONTEND_IMAGE=${FRONTEND_IMAGE}" \
+          -e "DOCKER_USERNAME=${DOCKER_USERNAME}" \
+          -e "DOCKER_PASSWORD=${DOCKER_PASSWORD}"

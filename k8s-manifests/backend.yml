@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-k8s
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: backend-k8s
+  template:
+    metadata:
+      labels:
+        app: backend-k8s
+    spec:
+      imagePullSecrets:
+      - name: dockerhub-secret
+      containers:
+      - name: backend
+        image: {{ BACKEND_IMAGE }}
+        envFrom:
+        - secretRef:
+            name: app-secrets
+        ports:
+        - containerPort: 3000
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "64Mi"
+          limits:
+            cpu: "200m"
+            memory: "128Mi"
+        volumeMounts:
+        - name: backend-storage
+          mountPath: /app/storage
+      volumes:
+      - name: backend-storage
+        persistentVolumeClaim:
+          claimName: backend-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend # Matches Nginx reverse pass http://backend:3000
+spec:
+  selector:
+    app: backend-k8s
+  ports:
+  - port: 3000
+    targetPort: 3000

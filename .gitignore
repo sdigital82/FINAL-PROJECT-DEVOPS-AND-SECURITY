@@ -1,0 +1,14 @@
+# Environment
+.env
+backend/Dockerfile-vuln
+backend/Dockerfile-Distro
+# Node
+node_modules/
+npm-debug.log*
+
+# Docker
+*.log
+
+# OS / Editor
+.DS_Store
+Thumbs.db

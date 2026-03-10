@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>User Registration - DevOps Lab 2</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="container">
+    <h1>User Registration</h1>
+    <form id="registerForm" action="/api/register" method="POST">
+      <div class="form-group">
+        <label for="name">Full Name:</label>
+        <input type="text" id="name" name="name" required>
+      </div>
+      <div class="form-group">
+        <label for="email">Email:</label>
+        <input type="email" id="email" name="email" required>
+      </div>
+      <button type="submit">Register</button>
+    </form>
+
+    <div id="response"></div>
+
+    <!-- New: list of past registered users below the form -->
+    <h2>Registered Users</h2>
+    <ul id="userList"></ul>
+  </div>
+
+  <script>
+    const form = document.getElementById('registerForm');
+    const responseDiv = document.getElementById('response');
+    const userList = document.getElementById('userList');
+
+    // Load all users from backend, latest first
+    async function loadUsers() {
+      userList.innerHTML = '';
+      try {
+        const res = await fetch('/api/users');
+        const users = await res.json();
+        users.forEach(user => {
+          const li = document.createElement('li');
+          li.textContent = `${user.name} (${user.email})`;
+          userList.appendChild(li);
+        });
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    // Handle form submit via fetch (no page reload)
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const formData = new FormData(form);
+      try {
+        const response = await fetch('/api/register', {
+          method: 'POST',
+          body: formData
+        });
+        const result = await response.json();
+        responseDiv.innerHTML = `<p>${result.message}</p>`;
+        form.reset();
+        await loadUsers(); // refresh list after new registration
+      } catch (err) {
+        console.error(err);
+        responseDiv.innerHTML = '<p>Registration failed</p>';
+      }
+    });
+
+    // Automatically load past registered users on page load
+    loadUsers();
+  </script>
+</body>
+</html>

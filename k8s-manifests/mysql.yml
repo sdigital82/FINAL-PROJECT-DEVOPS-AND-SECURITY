@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-k8s
+spec:
+  selector:
+    matchLabels:
+      app: mysql-k8s
+  template:
+    metadata:
+      labels:
+        app: mysql-k8s
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:8.0
+        envFrom:
+        - secretRef:
+            name: app-secrets
+        ports:
+        - containerPort: 3306
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+        volumeMounts:
+        - name: mysql-init-vol
+          mountPath: /docker-entrypoint-initdb.d
+      volumes:
+      - name: mysql-init-vol
+        configMap:
+          name: mysql-init-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  selector:
+    app: mysql-k8s
+  ports:
+  - port: 3306
+    targetPort: 3306
